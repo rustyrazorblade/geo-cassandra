@@ -21,4 +21,8 @@ class Database(contact: String, keyspace: String) {
         this.session = cluster.connect(keyspace)
     }
 
+    fun prepare_all() {
+        Location(session).prepare_all()
+    }
+
 }
