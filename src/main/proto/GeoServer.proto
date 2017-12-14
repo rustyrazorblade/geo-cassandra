@@ -6,7 +6,7 @@ option java_outer_classname = "GeoCassandraServer";
 
 service GeoService {
     rpc UpdateDeviceLocation(PutDeviceRequest) returns (PutDeviceReply);
-    rpc GetDeviceNeighbors(NeighborRequest) returns ()
+    rpc GetDeviceNeighbors(GetNeighborRequest) returns (GetNeighborResponse);
 }
 
 message PutDeviceRequest {
@@ -25,11 +25,11 @@ message Location {
     required float long = 2;
 }
 
-message NeighborRequest {
+message GetNeighborRequest {
     required Location location = 1;
 }
 
-message NeighborResponse {
+message GetNeighborResponse {
     repeated Device devices = 1;
 }
 

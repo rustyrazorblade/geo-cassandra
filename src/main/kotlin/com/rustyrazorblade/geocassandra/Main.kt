@@ -37,9 +37,8 @@ fun main(args: Array<String>) {
 // have to pass in the working cluster and connected session
 class GeoServer(var database: Database) : GeoServiceImplBase() {
 
-    override fun putUser(request: GeoCassandraServer.PutRequest?, responseObserver: StreamObserver<GeoCassandraServer.PutReply>?) {
-
-        super.putUser(request, responseObserver)
+    override fun updateDeviceLocation(request: GeoCassandraServer.PutDeviceRequest?, responseObserver: StreamObserver<GeoCassandraServer.PutDeviceReply>?) {
+        super.updateDeviceLocation(request, responseObserver)
     }
 
 }

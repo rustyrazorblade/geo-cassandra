@@ -53,8 +53,9 @@ dependencies {
     // https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
     compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.+'
 
-    // geohashing
+    // geohashing and geospatial (haversin)
     compile "com.github.davidmoten:geo:0.7.1"
+    compile 'org.locationtech.spatial4j:spatial4j:0.6'
 
     // https://mvnrepository.com/artifact/com.google.guava/guava
     compile group: 'com.google.guava', name: 'guava', version: '19.0'
