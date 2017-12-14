@@ -1,9 +1,9 @@
 package com.rustyrazorblade.geocassandra
 
+import com.datastax.driver.core.PreparedStatement
 import com.datastax.driver.core.Session
 import com.sun.javafx.binding.Logging
 import org.slf4j.LoggerFactory
-import java.sql.PreparedStatement
 import java.util.*
 
 /*
@@ -17,7 +17,7 @@ class Location(var session: Session) {
     val queries = mapOf(LocationQuery.INSERT
                          to "INSERT INTO location_updates (geohash, device, lat, long) values (?,?,?,?)")
 
-    var prepared = emptyMap<String, PreparedStatement>()
+    var prepared = mutableMapOf<LocationQuery, PreparedStatement>()
 
     var logger = LoggerFactory.getLogger("location")
 
@@ -26,7 +26,7 @@ class Location(var session: Session) {
             var string_query = queries[key]
             logger.info("Preparing: $query")
             var stmt = session.prepare(query)
-
+            prepared[key] = stmt
         }
     }
 }
