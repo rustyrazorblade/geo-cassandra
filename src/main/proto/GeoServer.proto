@@ -5,21 +5,34 @@ package com.rustyrazorblade.geocassandra;
 option java_outer_classname = "GeoCassandraServer";
 
 service GeoService {
-    rpc PutUser(PutRequest) returns (PutReply);
+    rpc UpdateDeviceLocation(PutDeviceRequest) returns (PutDeviceReply);
+    rpc GetDeviceNeighbors(NeighborRequest) returns ()
 }
 
-message PutRequest {
+message PutDeviceRequest {
     required string user_id = 1;
     required int32 ttl = 2;
     required Location location = 3;
 }
 
 
-message PutReply {
+message PutDeviceReply {
     required string geohash = 1;
 }
 
 message Location {
     required float lat = 1;
     required float long = 2;
+}
+
+message NeighborRequest {
+    required Location location = 1;
+}
+
+message NeighborResponse {
+    repeated Device devices = 1;
+}
+
+message Device {
+    required string id = 1;
 }

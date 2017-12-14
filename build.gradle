@@ -62,6 +62,7 @@ dependencies {
 
     testCompile group: 'junit', name: 'junit', version: '4.+'
     testCompile 'org.mockito:mockito-core:2.+'
+    testCompile "io.grpc:grpc-testing:${grpcVersion}"
 }
 
 compileKotlin {
