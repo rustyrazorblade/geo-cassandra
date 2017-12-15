@@ -60,10 +60,14 @@ class Database(contact: String, keyspace: String) {
         session.execute(bound)
     }
 
+    fun findNearbyDevices(lat: Double, long: Double, distance: Double): List<Device> {
+        return findNearbyDevices(Optional.empty(), lat, long, Optional.of(distance))
+    }
+
     // no user, just a generic search for stuff near a point
     // TODO: Figure out a reasonable distance.  Maybe 10Km?
-    fun findNearbyDevices(lat: Double, long: Double) {
-        findNearbyDevices(Optional.empty(), lat, long, Optional.empty())
+    fun findNearbyDevices(lat: Double, long: Double) : List<Device> {
+        return findNearbyDevices(Optional.empty(), lat, long, Optional.empty())
     }
 
     /*
@@ -87,7 +91,7 @@ class Database(contact: String, keyspace: String) {
         seen.add(hash)
 
         executed++
-        var devices = findByHash(hash)
+        var devices = findByHash(listOf(hash))
 
         val num = devices.count()
 
@@ -99,9 +103,15 @@ class Database(contact: String, keyspace: String) {
 
         // then go to neighbors
         val neighbors = GeoHash.neighbours(hash)
-        for(hash in neighbors) {
 
+        for(hash in neighbors) {
+            // don't re-query for the hashes we've already seen
+            if(seen.contains(hash))
+                continue
+
+            seen.add(hash)
         }
+
 
         val point = geo.shapeFactory.pointXY(lat, long)
 
@@ -115,7 +125,7 @@ class Database(contact: String, keyspace: String) {
 
         for(hash in hashes.hashes.shuffled()) {
             executed++
-            devices = findByHash(hash)
+            devices = findByHash(listOf(hash))
             result.addAll(devices)
         }
         logger.info("$executed queries executed, ${result.count()} found")
@@ -125,17 +135,24 @@ class Database(contact: String, keyspace: String) {
 
     /*
     Internal call for findNearbyDevices
+    Accepts multiple hashes
+    Will query for all of them in async form, merge, return
      */
-    private fun findByHash(hash: String): List<Device> {
+    private fun findByHash(hashes: List<String>): List<Device> {
         val query = queries.get(Query.SELECT_DEVICES_BY_LOCATION)!!
 
-        val bound = query.bind(hash)
+        var result = mutableListOf<Device>()
+        for(hash in hashes) {
+            val bound = query.bind(hash)
 
-        logger.info("Pulling back exact hash match")
-        val data = session.execute(bound)
+            logger.info("Pulling back hash $hash")
 
-        val devices = data.map { Device(device = it.getString("device") ) }
-        return devices
+            val data = session.execute(bound)
+
+            val devices = data.map { Device(device = it.getString("device")) }
+            result.addAll(devices)
+        }
+        return result
     }
 
 

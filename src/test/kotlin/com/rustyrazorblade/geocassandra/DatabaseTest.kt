@@ -17,7 +17,7 @@ class DatabaseTest : TestCase() {
         db.updateDeviceLocation("test2", 30.00001, 60.0000)
 
         // should return test2
-        var result = db.findNearbyDevices(30.0, 60.0)
+        var result = db.findNearbyDevices(30.0, 60.0, .1)
     }
 
 
