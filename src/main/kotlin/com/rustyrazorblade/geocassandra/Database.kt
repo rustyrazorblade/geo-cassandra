@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory
 import com.github.davidmoten.geo.GeoHash
 import org.locationtech.spatial4j.context.SpatialContext
 import java.util.*
-import kotlin.coroutines.experimental.buildIterator
 
 /*
 
@@ -25,6 +24,11 @@ CREATE TABLE device_ignore (device text, other text, primary key(device, other))
 
 create table location_updates ( geohash text, device text, lat double, long double, primary key (geohash, device ) );
 
+CREATE table ignore_stats ( device text primary key, num counter )
+  WITH compaction = {'class':'LeveledCompactionStrategy'}
+  AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
+  AND compression = {'class':'LZ4Compressor', 'chunk_length_kb':4};
+
  */
 class Database(contact: String, keyspace: String) {
 
@@ -37,7 +41,8 @@ class Database(contact: String, keyspace: String) {
             Query.INSERT_LOCATION to "INSERT INTO location_updates (geohash, device, lat, long) values (?,?,?,?) USING TTL 3600",
             Query.SELECT_DEVICES_BY_LOCATION to "SELECT geohash, device, lat, long FROM location_updates WHERE geohash = ?",
             Query.INSERT_IGNORE to "INSERT INTO device_ignore (device, other) VALUES (?, ?)",
-            Query.SELECT_IGNORED to "SELECT other from device_ignore WHERE device = ?"
+            Query.SELECT_IGNORED to "SELECT other from device_ignore WHERE device = ?",
+            Query.ADD_IGNORED to "UPDATE ignore_stats SET num = num + 1 WHERE device = ?"
     )
 
     var queries = mutableMapOf<Query, PreparedStatement>()
@@ -161,7 +166,11 @@ class Database(contact: String, keyspace: String) {
     fun ignoreDevice(device: String, otherDevice: String) {
         val query = queries.get(Query.INSERT_IGNORE)!!
         val bound = query.bind(device, otherDevice)
-        session.execute(bound)
+        session.executeAsync(bound)
+
+        val query2 = queries.get(Query.ADD_IGNORED)!!
+        val bound2 = query2.bind(device)
+        session.executeAsync(bound2)
     }
 
     fun getIgnored(device: String) : List<Device> {
@@ -177,7 +186,8 @@ enum class Query {
     INSERT_LOCATION,
     SELECT_DEVICES_BY_LOCATION,
     INSERT_IGNORE,
-    SELECT_IGNORED
+    SELECT_IGNORED,
+    ADD_IGNORED
 
 }
 
