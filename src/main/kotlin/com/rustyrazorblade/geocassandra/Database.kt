@@ -6,6 +6,10 @@ import com.datastax.driver.core.Session
 
 import org.slf4j.LoggerFactory
 import com.github.davidmoten.geo.GeoHash
+import org.locationtech.spatial4j.context.SpatialContext
+import java.util.*
+import kotlin.coroutines.experimental.buildIterator
+
 /*
 
 CREATE TABLE device (device text primary key, bloom_filter int)
@@ -19,20 +23,23 @@ CREATE TABLE device_hide (device text, other text, primary key(device, other))
   AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
   AND compression = {'class':'LZ4Compressor', 'chunk_length_kb':4};
 
-create table locations ( geohash text, device text, lat float, long float, primary key (geohash, device ) );
-
+create table location_updates ( geohash text, device text, lat double, long double, primary key (geohash, device ) );
 
  */
 class Database(contact: String, keyspace: String) {
 
+    var hashLength = 6
     var cluster: Cluster
     var session: Session
     var logger = LoggerFactory.getLogger(this::class.java)
 
-    val statements = mapOf(Query.INSERT_LOCATION
-                            to "INSERT INTO location_updates (geohash, device, lat, long) values (?,?,?,?) USING TTL 3600")
+    val statements = mapOf(
+            Query.INSERT_LOCATION to "INSERT INTO location_updates (geohash, device, lat, long) values (?,?,?,?) USING TTL 3600",
+            Query.SELECT_DEVICES_BY_LOCATION to "SELECT geohash, device, lat, long FROM location_updates WHERE geohash = ?"
+    )
 
     var queries = mutableMapOf<Query, PreparedStatement>()
+    var geo = SpatialContext.GEO
 
     init {
         logger.info("Connecting to cluster")
@@ -47,43 +54,57 @@ class Database(contact: String, keyspace: String) {
         }
     }
 
-    fun updateDeviceLocation(device: String, lat: Float, long: Float) {
-        val hash = GeoHash.encodeHash(lat.toDouble(), long.toDouble())
+    fun updateDeviceLocation(device: String, lat: Double, long: Double) {
+        val hash = GeoHash.encodeHash(lat, long, hashLength)
         var bound = queries[Query.INSERT_LOCATION]!!.bind(hash, device, lat, long)
         session.execute(bound)
     }
 
+    // no user, just a generic search for stuff near a point
+    // TODO: Figure out a reasonable distance.  Maybe 10Km?
+    fun findNearbyDevices(lat: Double, long: Double) {
+        findNearbyDevices(Optional.empty(), lat, long, Optional.empty())
+    }
+
     // don't want to return the device
-    fun findNearbyDevices(device: String, lat: Float, long: Float) {
-        val hash = GeoHash.encodeHash(lat.toDouble(), long.toDouble())
+    fun findNearbyDevices(device: Optional<String>, lat: Double, long: Double, distance: Optional<Double>) : List<Device> {
 
-        GeoHash.neighbours(hash)
+        val hash = GeoHash.encodeHash(lat, long, hashLength)
+        val point = geo.shapeFactory.pointXY(lat, long)
 
+        val rect = geo.distCalc.calcBoxByDistFromPt(point, distance.orElse(0.1), geo, null)
+        logger.info("Rectangle: $rect")
+        // fetch all geo codes within the bounding box
+        var hashes = GeoHash.coverBoundingBox(rect.maxX, rect.maxY, rect.minX, rect.minY, 6)
+        logger.info("Hahes: $hashes")
+
+        val result = mutableListOf<Device>()
+        var executed = 0
+        var found = 0
+
+        for(hash in hashes.hashes.shuffled()) {
+            logger.info("Querying Cassandra for $hash")
+            val bound = queries[Query.SELECT_DEVICES_BY_LOCATION]!!.bind(hash)
+
+            val data = session.execute(bound)
+
+            executed++
+
+            val devices = data.map { Device(device = it.getString("device") ) }
+
+            result.addAll(devices)
+        }
+        logger.info("$executed queries executed, ${result.count()} found")
+
+        return result
     }
 
-    fun distance(lat1: Double, lat2: Double, lon1: Double,
-                 lon2: Double, el1: Double, el2: Double): Double {
 
-        val R = 6371 // Radius of the earth
-
-        val latDistance = Math.toRadians(lat2 - lat1)
-        val lonDistance = Math.toRadians(lon2 - lon1)
-        val a = Math.sin(latDistance / 2) * Math.sin(latDistance / 2) + (Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2))
-        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        var distance = R.toDouble() * c * 1000.0 // convert to meters
-
-        val height = el1 - el2
-
-        distance = Math.pow(distance, 2.0) + Math.pow(height, 2.0)
-
-        return Math.sqrt(distance)
-    }
 
 }
 
 enum class Query {
-    INSERT_LOCATION,
+    INSERT_LOCATION, SELECT_DEVICES_BY_LOCATION,
 
 }
 
@@ -95,4 +116,4 @@ saving the original lat/long to rank within geohash
 
 data class Location(val geohash: String, val device: String, val lat: Float)
 
-
+data class Device(val device: String)

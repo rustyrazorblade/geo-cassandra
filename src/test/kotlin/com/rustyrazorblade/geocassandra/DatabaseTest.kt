@@ -12,9 +12,14 @@ class DatabaseTest : TestCase() {
     }
 
     @Test
-    fun testUpdateLocation() {
-        db.updateDeviceLocation("test", 60.0F, 60.0F)
-        db.updateDeviceLocation("test2", 60.0F, 60.0F)
+    fun testUpdateLocationThenSearch() {
+        db.updateDeviceLocation("test", 30.0, 60.0)
+        db.updateDeviceLocation("test2", 30.00001, 60.0000)
+
+        // should return test2
+        var result = db.findNearbyDevices(30.0, 60.0)
     }
+
+
 
 }
