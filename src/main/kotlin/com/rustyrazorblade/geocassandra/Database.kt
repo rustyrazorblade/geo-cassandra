@@ -80,27 +80,28 @@ class Database(contact: String, keyspace: String) {
         val result = mutableListOf<Device>()
         var executed = 0
 
-        // keep a list of the hashes we've seen, we don't need to re-query for it
         var seen = mutableSetOf<String>()
         // first look up the exact hash given the coordinates
 
         val hash = GeoHash.encodeHash(lat, long, hashLength)
         seen.add(hash)
 
-        val bound = queries[Query.SELECT_DEVICES_BY_LOCATION]!!.bind(hash)
-        logger.info("Pulling back exact hash match")
-
-        val data = session.execute(bound)
-        val devices = data.map { Device(device = it.getString("device") ) }
+        executed++
+        var devices = findByHash(hash)
 
         val num = devices.count()
 
         result.addAll(devices)
+
         if(result.count() > 50) {
             return result
         }
 
         // then go to neighbors
+        val neighbors = GeoHash.neighbours(hash)
+        for(hash in neighbors) {
+
+        }
 
         val point = geo.shapeFactory.pointXY(lat, long)
 
@@ -110,24 +111,31 @@ class Database(contact: String, keyspace: String) {
         var hashes = GeoHash.coverBoundingBox(rect.maxX, rect.maxY, rect.minX, rect.minY, 6)
         logger.info("Hahes: $hashes")
 
-        var found = 0
-
         // then use the entire bounding box
 
         for(hash in hashes.hashes.shuffled()) {
-            val bound = queries[Query.SELECT_DEVICES_BY_LOCATION]!!.bind(hash)
-
-            val data = session.execute(bound)
-
             executed++
-
-            val devices = data.map { Device(device = it.getString("device") ) }
-
+            devices = findByHash(hash)
             result.addAll(devices)
         }
         logger.info("$executed queries executed, ${result.count()} found")
 
         return result
+    }
+
+    /*
+    Internal call for findNearbyDevices
+     */
+    private fun findByHash(hash: String): List<Device> {
+        val query = queries.get(Query.SELECT_DEVICES_BY_LOCATION)!!
+
+        val bound = query.bind(hash)
+
+        logger.info("Pulling back exact hash match")
+        val data = session.execute(bound)
+
+        val devices = data.map { Device(device = it.getString("device") ) }
+        return devices
     }
 
 
