@@ -18,7 +18,7 @@ CREATE TABLE device (device text primary key, bloom_filter int)
  AND compression = {'class':'LZ4Compressor', 'chunk_length_kb':4};
 
 
-CREATE TABLE device_hide (device text, other text, primary key(device, other))
+CREATE TABLE device_ignore (device text, other text, primary key(device, other))
   WITH compaction = {'class':'LeveledCompactionStrategy'}
   AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
   AND compression = {'class':'LZ4Compressor', 'chunk_length_kb':4};
@@ -35,7 +35,9 @@ class Database(contact: String, keyspace: String) {
 
     val statements = mapOf(
             Query.INSERT_LOCATION to "INSERT INTO location_updates (geohash, device, lat, long) values (?,?,?,?) USING TTL 3600",
-            Query.SELECT_DEVICES_BY_LOCATION to "SELECT geohash, device, lat, long FROM location_updates WHERE geohash = ?"
+            Query.SELECT_DEVICES_BY_LOCATION to "SELECT geohash, device, lat, long FROM location_updates WHERE geohash = ?",
+            Query.INSERT_IGNORE to "INSERT INTO device_ignore (device, other) VALUES (?, ?)",
+            Query.SELECT_IGNORED to "SELECT other from device_ignore WHERE device = ?"
     )
 
     var queries = mutableMapOf<Query, PreparedStatement>()
@@ -155,12 +157,27 @@ class Database(contact: String, keyspace: String) {
         return result
     }
 
+    // mark someone seen
+    fun ignoreDevice(device: String, otherDevice: String) {
+        val query = queries.get(Query.INSERT_IGNORE)!!
+        val bound = query.bind(device, otherDevice)
+        session.execute(bound)
+    }
+
+    fun getIgnored(device: String) : List<Device> {
+        val query = queries.get(Query.SELECT_IGNORED)!!
+        val bound = query.bind(device)
+        return session.execute(bound).map { Device(it.getString("other")) }
+    }
 
 
 }
 
 enum class Query {
-    INSERT_LOCATION, SELECT_DEVICES_BY_LOCATION,
+    INSERT_LOCATION,
+    SELECT_DEVICES_BY_LOCATION,
+    INSERT_IGNORE,
+    SELECT_IGNORED
 
 }
 

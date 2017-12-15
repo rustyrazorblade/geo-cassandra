@@ -23,6 +23,12 @@ class DatabaseTest : TestCase() {
         // 3 results exepcted
     }
 
+    @Test
+    fun testIgnore() {
+        db.ignoreDevice("test", "test2")
 
+        val results = db.getIgnored("test")
 
+        assertEquals(1, results.count())
+    }
 }
