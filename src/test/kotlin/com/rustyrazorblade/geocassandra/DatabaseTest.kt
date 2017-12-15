@@ -15,9 +15,12 @@ class DatabaseTest : TestCase() {
     fun testUpdateLocationThenSearch() {
         db.updateDeviceLocation("test", 30.0, 60.0)
         db.updateDeviceLocation("test2", 30.00001, 60.0000)
+        db.updateDeviceLocation("test3", 30.00000, 60.001)
 
         // should return test2
         var result = db.findNearbyDevices(30.0, 60.0, .1)
+
+        // 3 results exepcted
     }
 
 
