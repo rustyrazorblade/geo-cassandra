@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory
 import com.github.davidmoten.geo.GeoHash
 import org.locationtech.spatial4j.context.SpatialContext
 import java.util.*
+import kotlin.coroutines.experimental.buildSequence
 
 /*
 
@@ -67,13 +68,13 @@ class Database(contact: String, keyspace: String) {
         session.execute(bound)
     }
 
-    fun findNearbyDevices(lat: Double, long: Double, distance: Double): List<Device> {
+    fun findNearbyDevices(lat: Double, long: Double, distance: Double): Sequence<Device> {
         return findNearbyDevices(Optional.empty(), lat, long, Optional.of(distance))
     }
 
     // no user, just a generic search for stuff near a point
     // TODO: Figure out a reasonable distance.  Maybe 10Km?
-    fun findNearbyDevices(lat: Double, long: Double) : List<Device> {
+    fun findNearbyDevices(lat: Double, long: Double) : Sequence<Device> {
         return findNearbyDevices(Optional.empty(), lat, long, Optional.empty())
     }
 
@@ -86,14 +87,13 @@ class Database(contact: String, keyspace: String) {
 
      don't want to return the device
       */
-    fun findNearbyDevices(device: Optional<String>, lat: Double, long: Double, distance: Optional<Double>) : List<Device> {
+    fun findNearbyDevices(device: Optional<String>, lat: Double, long: Double, distance: Optional<Double>)  = buildSequence {
 
         val result = mutableListOf<Device>()
         var executed = 0
 
         var seen = mutableSetOf<String>()
         // first look up the exact hash given the coordinates
-
         val hash = GeoHash.encodeHash(lat, long, hashLength)
         seen.add(hash)
 
@@ -102,42 +102,40 @@ class Database(contact: String, keyspace: String) {
 
         val num = devices.count()
 
-        result.addAll(devices)
-
-        if(result.count() > 50) {
-            return result
-        }
+        // first group of results
+        yieldAll(devices)
 
         // then go to neighbors
         val neighbors = GeoHash.neighbours(hash)
+        neighbors.removeAll(seen)
 
-        for(hash in neighbors) {
+        // yield each of the neighbors info
+        for (hash in neighbors) {
             // don't re-query for the hashes we've already seen
-            if(seen.contains(hash))
+            if (seen.contains(hash))
                 continue
 
             seen.add(hash)
+
+            yieldAll(findByHash(listOf(hash)))
         }
 
+        // we've now yielded the direct cell and the neighboring ones
+        // lets draw a bounding box and yield the rest in random order
 
         val point = geo.shapeFactory.pointXY(lat, long)
 
         val rect = geo.distCalc.calcBoxByDistFromPt(point, distance.orElse(0.1), geo, null)
         logger.info("Rectangle: $rect")
+
         // fetch all geo codes within the bounding box
-        var hashes = GeoHash.coverBoundingBox(rect.maxX, rect.maxY, rect.minX, rect.minY, 6)
-        logger.info("Hahes: $hashes")
+        var hashes = GeoHash.coverBoundingBox(rect.maxX, rect.maxY, rect.minX, rect.minY, 6).hashes.shuffled()
 
-        // then use the entire bounding box
+        var tmp = mutableListOf<String>()
 
-        for(hash in hashes.hashes.shuffled()) {
-            executed++
-            devices = findByHash(listOf(hash))
-            result.addAll(devices)
+        for (hash in hashes) {
+            yieldAll(findByHash(listOf(hash)))
         }
-        logger.info("$executed queries executed, ${result.count()} found")
-
-        return result
     }
 
     /*
@@ -145,21 +143,20 @@ class Database(contact: String, keyspace: String) {
     Accepts multiple hashes
     Will query for all of them in async form, merge, return
      */
-    private fun findByHash(hashes: List<String>): List<Device> {
+    fun findByHash(hashes: List<String>) = buildSequence {
         val query = queries.get(Query.SELECT_DEVICES_BY_LOCATION)!!
 
         var result = mutableListOf<Device>()
         for(hash in hashes) {
             val bound = query.bind(hash)
 
-            logger.info("Pulling back hash $hash")
+            logger.debug("Pulling back hash $hash")
 
             val data = session.execute(bound)
 
             val devices = data.map { Device(device = it.getString("device")) }
-            result.addAll(devices)
+            yieldAll(devices)
         }
-        return result
     }
 
     // mark someone seen

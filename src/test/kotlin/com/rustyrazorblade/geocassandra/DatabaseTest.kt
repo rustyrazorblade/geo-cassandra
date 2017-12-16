@@ -18,7 +18,12 @@ class DatabaseTest : TestCase() {
         db.updateDeviceLocation("test3", 30.00000, 60.001)
 
         // should return test2
-        var result = db.findNearbyDevices(30.0, 60.0, .1)
+        var result = db.findNearbyDevices(30.0, 60.0, .1).toList()
+
+        // this is the exact match it should come first
+        assertEquals("test", result[0].device)
+
+        assertEquals(3, result.count())
 
         // 3 results exepcted
     }
