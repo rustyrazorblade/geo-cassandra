@@ -8,8 +8,10 @@ class DatabaseTest : TestCase() {
     var db: Database = Database("127.0.0.1", "geo")
 
     init {
+        db.run_migrations()
         db.prepare_all()
     }
+
 
     @Test
     fun testUpdateLocationThenSearch() {

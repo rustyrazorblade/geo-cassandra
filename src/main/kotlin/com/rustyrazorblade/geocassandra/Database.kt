@@ -6,32 +6,13 @@ import com.datastax.driver.core.Session
 
 import org.slf4j.LoggerFactory
 import com.github.davidmoten.geo.GeoHash
+import org.cognitor.cassandra.migration.MigrationRepository
+import org.cognitor.cassandra.migration.MigrationTask
 import org.locationtech.spatial4j.context.SpatialContext
 import java.util.*
 import kotlin.coroutines.experimental.buildSequence
 
-/*
-
-CREATE TABLE device (device text primary key, bloom_filter int)
- WITH compaction = {'class':'LeveledCompactionStrategy'}
- AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
- AND compression = {'class':'LZ4Compressor', 'chunk_length_kb':4};
-
-
-CREATE TABLE device_ignore (device text, other text, primary key(device, other))
-  WITH compaction = {'class':'LeveledCompactionStrategy'}
-  AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
-  AND compression = {'class':'LZ4Compressor', 'chunk_length_kb':4};
-
-create table location_updates ( geohash text, device text, lat double, long double, primary key (geohash, device ) );
-
-CREATE table ignore_stats ( device text primary key, num counter )
-  WITH compaction = {'class':'LeveledCompactionStrategy'}
-  AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
-  AND compression = {'class':'LZ4Compressor', 'chunk_length_kb':4};
-
- */
-class Database(contact: String, keyspace: String) {
+class Database(contact: String, val keyspace: String) {
 
     var hashLength = 6
     var cluster: Cluster
@@ -78,6 +59,11 @@ class Database(contact: String, keyspace: String) {
         return findNearbyDevices(Optional.empty(), lat, long, Optional.empty())
     }
 
+    fun run_migrations() {
+        var db = org.cognitor.cassandra.migration.Database(cluster, keyspace)
+        var migration = MigrationTask(db, MigrationRepository("migrations"))
+        migration.migrate()
+    }
     /*
      returns up to 50 close results
      first it checks the geohash
@@ -105,18 +91,15 @@ class Database(contact: String, keyspace: String) {
         // first group of results
         yieldAll(devices)
 
-        // then go to neighbors
+        // then go to neighbors, prune what we've seen
         val neighbors = GeoHash.neighbours(hash)
         neighbors.removeAll(seen)
+        seen.addAll(neighbors)
 
         // yield each of the neighbors info
         for (hash in neighbors) {
-            // don't re-query for the hashes we've already seen
-            if (seen.contains(hash))
-                continue
-
+            // TODO: grab 3-5 at a time
             seen.add(hash)
-
             yieldAll(findByHash(listOf(hash)))
         }
 
@@ -163,11 +146,14 @@ class Database(contact: String, keyspace: String) {
     fun ignoreDevice(device: String, otherDevice: String) {
         val query = queries.get(Query.INSERT_IGNORE)!!
         val bound = query.bind(device, otherDevice)
-        session.executeAsync(bound)
+        var future = session.executeAsync(bound)
 
         val query2 = queries.get(Query.ADD_IGNORED)!!
         val bound2 = query2.bind(device)
-        session.executeAsync(bound2)
+        var future2 = session.executeAsync(bound2)
+
+        future.get()
+        future2.get()
     }
 
     fun getIgnored(device: String) : List<Device> {
